@@ -1,7 +1,8 @@
 import {
+  isBaseMessageSchema,
+  isMyChatMemberUpdateSchema,
   isPhotoMessageSchema,
   isTextMessageSchema,
-  isUpdateSchema,
   isVideoNoteMesssageSchema,
   isVoiceMesssageSchema,
 } from "@/app/utils/Validation";
@@ -9,6 +10,8 @@ import {
 import { saveMessageRDB } from "@/app/lib/UploadRDB";
 import { parseMessage } from "@/app/utils/Parse";
 import { voiceToText } from "@/app/lib/VoiceToText";
+import { afina } from "@/app/lib/BotClient";
+import { Context } from "grammy";
 
 import { NextRequest, NextResponse } from "next/server";
 
@@ -28,21 +31,84 @@ export async function POST(req: NextRequest) {
     try {
       const update = await req.json();
 
-      if (!isUpdateSchema(update)) {
-        console.log("Error:", {
-          status: "ignored",
-          message: "Update doesn't match telegram-update types",
-          code: "INVALID_UPDATE",
-        });
-        return;
-      }
-
       console.log({
         status: "ok",
         message: "Update received",
         update,
       });
+      console.dir(update, { depth: null, colors: true });
 
+      // $ лично только с создателем $
+      if (isBaseMessageSchema(update.message)) {
+        if (
+          update.message.chat.type === "private" &&
+          update.message.from.id !== 726008803
+        ) {
+          console.log({
+            status: "ignored",
+            message: "Attempt to privately communicate",
+            code: "ATTEMPT_PRIVATE",
+          });
+          const chatId = update.message.chat.id;
+          const name = update.message.chat.first_name;
+          afina.api.sendMessage(
+            chatId,
+            `Прости, ${name}, но лично могу общаться только с создателем💔`
+          );
+          return;
+        }
+      }
+
+      // $ добавлять в чат может только создатель $
+      if (isMyChatMemberUpdateSchema(update)) {
+        if (update.my_chat_member) {
+          const chat = update.my_chat_member.chat;
+          const from = update.my_chat_member.from;
+
+          if(from.id !== 726008803) {
+          console.log({
+            status: "info",
+            message: "Attempt to add to group chat",
+            code: "INVITE_IN_CHAT",
+            chatId: chat.id,
+            addedBy: from?.username || from?.id,
+          });
+
+          if (
+            chat.type === "group" ||
+            chat.type === "supergroup" ||
+            chat.type === "channel"
+          ) {
+            const newStatus = update.my_chat_member.new_chat_member.status;
+            if (newStatus === "member" || newStatus === "administrator") {
+              try {
+                // Отправляем сообщение в чат
+                await afina.api.sendMessage(
+                  chat.id,
+                  "Не хочу никого обидеть, но я ухожу отсюда 👀"
+                );
+
+                // Выходим из чата
+                await afina.api.leaveChat(chat.id);
+
+                console.log(`Bot left chat ${chat.id}`);
+              } catch (e) {
+                console.error(
+                  "Ошибка при отправке сообщения или выходе из чата",
+                  e
+                );
+              }
+            }
+          }
+          return true; // Обработали обновление
+        } }
+
+        // await afina.api.sendMessage(chatId, "Не хочу никого обидеть, но я ухожу отсюда 👀");
+        // await afina.api.leaveChat(chatId);
+        return;
+      }
+
+      // $ работа с текстовым сообщением $
       if (isTextMessageSchema(update.message)) {
         console.log({
           status: "ok",
@@ -63,6 +129,8 @@ export async function POST(req: NextRequest) {
           record: recordResult,
         });
 
+        const id = recordResult[0].id;
+
         // далее формируем embeddings
         // далее обрабатываем нужен ли ответ от LLM
 
@@ -70,6 +138,7 @@ export async function POST(req: NextRequest) {
         return;
       }
 
+      // $ работа с фотографией $
       if (isPhotoMessageSchema(update.message)) {
         console.log({
           status: "ok",
@@ -80,6 +149,7 @@ export async function POST(req: NextRequest) {
         return;
       }
 
+      // $ работа с голосовым сообщением $
       if (isVoiceMesssageSchema(update.message)) {
         console.log({
           status: "ok",
@@ -118,6 +188,7 @@ export async function POST(req: NextRequest) {
         return;
       }
 
+      // $ работа с кружочком $
       if (isVideoNoteMesssageSchema(update.message)) {
         console.log({
           status: "ok",

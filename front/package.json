@@ -9,10 +9,12 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@pinecone-database/pinecone": "^6.1.1",
     "@prisma/client": "^6.11.1",
     "@prisma/extension-accelerate": "^2.0.1",
     "@supabase/supabase-js": "^2.50.3",
     "assemblyai": "^4.14.0",
+    "grammy": "^1.37.0",
     "next": "15.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

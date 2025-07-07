@@ -4,16 +4,16 @@ const FromSchema = z.object({
   id: z.number(),
   is_bot: z.boolean(),
   first_name: z.string(),
-  last_name: z.string(),
-  username: z.string(),
-  language_code: z.string(),
-  is_premium: z.boolean(),
+  last_name: z.string().optional(),
+  username: z.string().optional(),
+  language_code: z.string().optional(),
+  is_premium: z.literal(true).optional(),
 });
 
 const ChatSchema = z.object({
   id: z.number(),
   first_name: z.string(),
-  last_name: z.string(),
+  last_name: z.string().optional(),
   username: z.string(),
   type: z.string(),
 });
@@ -73,10 +73,50 @@ export const VideoNoteMesssageSchema = BaseMessageSchema.extend({
   }),
 });
 
+export const MyChatMemberUpdateSchema = z.object({
+  update_id: z.number(),
+  my_chat_member: z.object({
+    chat: z.object({
+      id: z.number(),
+      title: z.string(), 
+      type: z.literal("group"),
+      all_members_are_administrators: z.boolean().optional(),
+      accepted_gift_types: z.object({
+        unlimited_gifts: z.boolean(),
+        limited_gifts: z.boolean(),
+        unique_gifts: z.boolean(),
+        premium_subscription: z.boolean()
+      }).optional()
+    }),
+    from: FromSchema,
+    date: z.number(),
+    old_chat_member: z.object({
+      user: z.object({
+        id: z.number(),
+        is_bot: z.boolean(),
+        first_name: z.string().optional(),
+        username: z.string(),
+      }),
+      status: z.string(),
+    }),
+    new_chat_member: z.object({
+      user: z.object({
+        id: z.number(),
+        is_bot: z.boolean(),
+        first_name: z.string().optional(),
+        username: z.string(),
+      }),
+      status: z.string(),
+    }),
+  })
+});
+
+// не используется можно убрать 
 export const UpdateSchema = z.object({
   update_id: z.number(),
   message: z
     .union([
+      BaseMessageSchema,
       TextMessageSchema,
       PhotoMessageSchema,
       VoiceMesssageSchema,
@@ -92,25 +132,45 @@ export const TelegramFileInfoSchema = z.object({
   }),
 });
 
+// можно стереть, если не буду использовать
 export const WhisperResponseSchema = z.object({
   text: z.string(),
 });
 
 export const AssemblyAiUploadUrlSchema = z.object({
-  upload_url: z.string()
-})
+  upload_url: z.string(),
+});
 
 export const AssemblyAiResponseSchema = z.object({
   id: z.string(),
   audio_url: z.string(),
   status: z.string(),
   text: z.string().nullable(),
-})
+});
 
 export const AssemblyAiResponseErrorSchema = z.object({
   status: z.string(),
-  error: z.string()
-})
+  error: z.string(),
+});
+
+// возможно лишнее, нигде не используется
+export const RecordResultSchema = z.array(
+  z.object({
+    id: z.number(),
+    updateId: z.number(),
+    messageId: z.number(),
+    chatId: z.number(),
+    userId: z.number(),
+    username: z.string(),
+    firstName: z.string(),
+    lastName: z.string(),
+    text: z.string(),
+    date: z.string(),
+    messageType: z.string(),
+  })
+);
+
+export const EmbeddingResponseSchema = z.array(z.array(z.number()));
 
 export function isTelegramFileInfoSchema(
   data: unknown
@@ -118,26 +178,42 @@ export function isTelegramFileInfoSchema(
   return TelegramFileInfoSchema.safeParse(data).success;
 }
 
-export function isWhisperResponseSchema(data: unknown): data is z.infer<typeof WhisperResponseSchema> {
+// можно стереть, если не буду использовать
+export function isWhisperResponseSchema(
+  data: unknown
+): data is z.infer<typeof WhisperResponseSchema> {
   return WhisperResponseSchema.safeParse(data).success;
 }
 
-export function isAssemblyAiUploadUrl(data: unknown): data is z.infer<typeof AssemblyAiUploadUrlSchema> {
+export function isAssemblyAiUploadUrl(
+  data: unknown
+): data is z.infer<typeof AssemblyAiUploadUrlSchema> {
   return AssemblyAiUploadUrlSchema.safeParse(data).success;
 }
 
-export function isAssemblyAiResponseSchema(data: unknown): data is z.infer<typeof AssemblyAiResponseSchema> {
+export function isAssemblyAiResponseSchema(
+  data: unknown
+): data is z.infer<typeof AssemblyAiResponseSchema> {
   return AssemblyAiResponseSchema.safeParse(data).success;
 }
 
-export function isAssemblyAiResponseErrorSchema(data: unknown): data is z.infer<typeof AssemblyAiResponseErrorSchema> {
+export function isAssemblyAiResponseErrorSchema(
+  data: unknown
+): data is z.infer<typeof AssemblyAiResponseErrorSchema> {
   return AssemblyAiResponseErrorSchema.safeParse(data).success;
 }
 
+// не исопльзуется можно убрать 
 export function isUpdateSchema(
   data: unknown
 ): data is z.infer<typeof UpdateSchema> {
   return UpdateSchema.safeParse(data).success;
+}
+
+export function isBaseMessageSchema(
+  data: unknown
+): data is z.infer<typeof BaseMessageSchema> {
+  return BaseMessageSchema.safeParse(data).success;
 }
 
 export function isPhotoMessageSchema(
@@ -162,4 +238,23 @@ export function isVideoNoteMesssageSchema(
   data: unknown
 ): data is z.infer<typeof VideoNoteMesssageSchema> {
   return VideoNoteMesssageSchema.safeParse(data).success;
+}
+
+// возможно лишнее нигде не используется
+export function isRecordResultSchema(
+  data: unknown
+): data is z.infer<typeof RecordResultSchema> {
+  return RecordResultSchema.safeParse(data).success;
+}
+
+export function isEmbeddingResponseSchema(
+  data: unknown
+): data is z.infer<typeof EmbeddingResponseSchema> {
+  return EmbeddingResponseSchema.safeParse(data).success;
+}
+
+export function isMyChatMemberUpdateSchema(
+  data: unknown
+): data is z.infer<typeof MyChatMemberUpdateSchema> {
+  return MyChatMemberUpdateSchema.safeParse(data).success;
 }

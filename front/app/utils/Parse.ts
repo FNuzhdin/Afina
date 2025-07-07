@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import { TextMessageSchema } from "./Validation";
 
-export type TextMessageRecord = {
+export interface TextMessageRecord {
   updateId: string;
   messageId: string;
   chatId: string;
