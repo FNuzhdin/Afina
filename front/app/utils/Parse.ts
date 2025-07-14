@@ -1,34 +1,80 @@
 import { z } from "zod/v4";
-import { TextMessageSchema } from "./Validation";
-
-export interface TextMessageRecord {
-  updateId: string;
-  messageId: string;
-  chatId: string;
-  userId: string;
-  username?: string;
-  firstName?: string;
-  lastName?: string;
-  text: string;
-  date: string;
-  messageType: string;
-};
+import {
+  BaseMessageSchema,
+  SummaryRecordSchema,
+  TextMessageRecordSchema,
+  TextMessageRecordSchemaArray,
+} from "./Validation";
 
 export function parseMessage(
   update_id: number,
-  message: z.infer<typeof TextMessageSchema>, 
+  message: z.infer<typeof BaseMessageSchema>,
+  texts: string[],
   messageType: string,
-): TextMessageRecord {
-  return {
-    updateId: String(update_id),
-    messageId: String(message.message_id),
-    chatId: String(message.chat.id),
-    userId: String(message.from.id),
-    username: message.from.username,
-    firstName: message.from.first_name,
-    lastName: message.from.last_name,
-    text: message.text,
-    date: new Date(message.date * 1000).toISOString(),
-    messageType
+  is_summarized: boolean
+): z.infer<typeof TextMessageRecordSchema>[] {
+  const parsedMessages: z.infer<typeof TextMessageRecordSchema>[] = [];
+
+  for (const text of texts) {
+    const parsed = {
+      updateId: String(update_id),
+      messageId: String(message.message_id),
+      chatId: String(message.chat.id),
+      userId: String(message.from.id),
+      username: message.from.username,
+      firstName: message.from.first_name,
+      lastName: message.from.last_name,
+      text,
+      date: new Date(message.date * 1000).toISOString(),
+      messageType,
+      is_summarized,
+    };
+
+    console.log({
+      message: "message parsed",
+      type: messageType,
+      result: parsed,
+    });
+
+    parsedMessages.push(parsed);
+  }
+
+  return parsedMessages;
+}
+
+export function parseSummary(
+  summarized: z.infer<typeof TextMessageRecordSchemaArray>,
+  summaryText: string
+): z.infer<typeof SummaryRecordSchema> {
+  const participantsSet = new Set<string>();
+
+  for (const msg of summarized) {
+    if (msg.username) {
+      participantsSet.add(msg.username);
+    } else if (msg.firstName || msg.lastName) {
+      participantsSet.add(
+        [msg.firstName, msg.lastName].filter(Boolean).join(" ")
+      );
+    }
+  }
+
+  const participants = Array.from(participantsSet).join(", ");
+
+  const summaryPayload = {
+    chat_id: summarized[0].chatId,
+    participants,
+    text: summaryText,
+    date_from: summarized[0].date,
+    date_to: summarized[summarized.length - 1].date,
+    created_at: new Date().toISOString(),
+    message_count: summarized.length,
   };
+
+  console.log({
+    status: "ok",
+    message: "Summary parsed",
+    result: summaryPayload,
+  });
+
+  return summaryPayload;
 }

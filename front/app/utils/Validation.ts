@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
 
-const FromSchema = z.object({
+export const FromSchema = z.object({
   id: z.number(),
   is_bot: z.boolean(),
   first_name: z.string(),
@@ -10,15 +10,23 @@ const FromSchema = z.object({
   is_premium: z.literal(true).optional(),
 });
 
-const ChatSchema = z.object({
+export const ChatSchema = z.object({
   id: z.number(),
-  first_name: z.string(),
+  title: z.string().optional(),
+  first_name: z.string().optional(),
   last_name: z.string().optional(),
-  username: z.string(),
+  username: z.string().optional(),
   type: z.string(),
+  all_members_are_administrators: z.boolean().optional(),
+      accepted_gift_types: z.object({
+        unlimited_gifts: z.boolean(),
+        limited_gifts: z.boolean(),
+        unique_gifts: z.boolean(),
+        premium_subscription: z.boolean()
+      }).optional()
 });
 
-const PhotoSchema = z.object({
+export const PhotoSchema = z.object({
   file_id: z.string(),
   file_unique_id: z.string(),
   file_size: z.number(),
@@ -26,19 +34,23 @@ const PhotoSchema = z.object({
   height: z.number(),
 });
 
-const BaseMessageSchema = z.object({
+export const BaseMessageSchema = z.object({
   message_id: z.number(),
   from: FromSchema,
   chat: ChatSchema,
   date: z.number(),
+  reply_to_message: z.object({
+    message_id: z.number(),
+    from: FromSchema,
+    chat: ChatSchema,
+    date: z.number(),
+  }).optional(),
 });
 
-// This schema is only for text messages from users
 export const TextMessageSchema = BaseMessageSchema.extend({
   text: z.string(),
 });
 
-// This schema is only for photo messages from users
 export const PhotoMessageSchema = BaseMessageSchema.extend({
   photo: z.array(PhotoSchema),
   caption: z.string().optional(),
@@ -76,18 +88,7 @@ export const VideoNoteMesssageSchema = BaseMessageSchema.extend({
 export const MyChatMemberUpdateSchema = z.object({
   update_id: z.number(),
   my_chat_member: z.object({
-    chat: z.object({
-      id: z.number(),
-      title: z.string(), 
-      type: z.literal("group"),
-      all_members_are_administrators: z.boolean().optional(),
-      accepted_gift_types: z.object({
-        unlimited_gifts: z.boolean(),
-        limited_gifts: z.boolean(),
-        unique_gifts: z.boolean(),
-        premium_subscription: z.boolean()
-      }).optional()
-    }),
+    chat: ChatSchema,
     from: FromSchema,
     date: z.number(),
     old_chat_member: z.object({
@@ -132,11 +133,6 @@ export const TelegramFileInfoSchema = z.object({
   }),
 });
 
-// можно стереть, если не буду использовать
-export const WhisperResponseSchema = z.object({
-  text: z.string(),
-});
-
 export const AssemblyAiUploadUrlSchema = z.object({
   upload_url: z.string(),
 });
@@ -153,36 +149,57 @@ export const AssemblyAiResponseErrorSchema = z.object({
   error: z.string(),
 });
 
-// возможно лишнее, нигде не используется
-export const RecordResultSchema = z.array(
-  z.object({
-    id: z.number(),
-    updateId: z.number(),
-    messageId: z.number(),
-    chatId: z.number(),
-    userId: z.number(),
-    username: z.string(),
-    firstName: z.string(),
-    lastName: z.string(),
-    text: z.string(),
-    date: z.string(),
-    messageType: z.string(),
-  })
-);
-
 export const EmbeddingResponseSchema = z.array(z.array(z.number()));
+
+export const TextMessageRecordSchema = z.object({
+  updateId: z.string(),
+  messageId: z.string(),
+  chatId: z.string(),
+  userId: z.string(),
+  username: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  text: z.string(),
+  date: z.string(),
+  messageType: z.string(),
+  is_summarized: z.boolean(),
+});
+
+export const TextMessageRecordSchemaArray = z.array(TextMessageRecordSchema);
+
+export const SummaryRecordSchema = z.object({
+  chat_id: z.string(),
+  participants: z.string(),
+  text: z.string(),
+  date_from: z.string(),
+  date_to: z.string(),
+  created_at: z.string(),
+  message_count: z.number(),
+}); 
+
+export function isSummaryRecordSchema(
+  data: unknown
+): data is z.infer<typeof SummaryRecordSchema> {
+  return SummaryRecordSchema.safeParse(data).success;
+}
+
+export function isTextMessageRecordSchemaArray(
+  data: unknown
+): data is z.infer<typeof TextMessageRecordSchemaArray> {
+  return TextMessageRecordSchemaArray.safeParse(data).success;
+}
+
+
+export function isTextMessageRecordSchema(
+  data: unknown
+): data is z.infer<typeof TextMessageRecordSchema> {
+  return TextMessageRecordSchema.safeParse(data).success;
+}
 
 export function isTelegramFileInfoSchema(
   data: unknown
 ): data is z.infer<typeof TelegramFileInfoSchema> {
   return TelegramFileInfoSchema.safeParse(data).success;
-}
-
-// можно стереть, если не буду использовать
-export function isWhisperResponseSchema(
-  data: unknown
-): data is z.infer<typeof WhisperResponseSchema> {
-  return WhisperResponseSchema.safeParse(data).success;
 }
 
 export function isAssemblyAiUploadUrl(
@@ -238,13 +255,6 @@ export function isVideoNoteMesssageSchema(
   data: unknown
 ): data is z.infer<typeof VideoNoteMesssageSchema> {
   return VideoNoteMesssageSchema.safeParse(data).success;
-}
-
-// возможно лишнее нигде не используется
-export function isRecordResultSchema(
-  data: unknown
-): data is z.infer<typeof RecordResultSchema> {
-  return RecordResultSchema.safeParse(data).success;
 }
 
 export function isEmbeddingResponseSchema(

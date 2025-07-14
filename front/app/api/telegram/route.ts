@@ -1,19 +1,31 @@
 import {
-  isBaseMessageSchema,
-  isMyChatMemberUpdateSchema,
   isPhotoMessageSchema,
   isTextMessageSchema,
   isVideoNoteMesssageSchema,
   isVoiceMesssageSchema,
 } from "@/app/utils/Validation";
 
-import { saveMessageRDB } from "@/app/lib/UploadRDB";
-import { parseMessage } from "@/app/utils/Parse";
-import { voiceToText } from "@/app/lib/VoiceToText";
-import { afina } from "@/app/lib/BotClient";
-import { Context } from "grammy";
+import {
+  cleanRDB,
+  isHundredBatch,
+  saveMessagesRDB,
+  saveSummaryRDB,
+  updateStatusSummarized,
+} from "@/app/lib/DataBases/RelationalDB";
+import { parseMessage, parseSummary } from "@/app/utils/Parse";
+import { voiceToText } from "@/app/lib/AI/SpeachToText";
+import {
+  afina,
+  afiOnlyCreator,
+  afiUnsupportedType,
+  checkMention,
+} from "@/app/lib/Bot";
 
 import { NextRequest, NextResponse } from "next/server";
+import { chunkText } from "@/app/utils/ChunkText";
+import { getEmbeddings } from "@/app/lib/AI/GetEmbeddings";
+import { querySimilar, uploadEmbeddings } from "@/app/lib/DataBases/VectorVDB";
+import { summaries } from "@/app/lib/AI/LLM";
 
 export async function POST(req: NextRequest) {
   const headersSecret = req.headers.get("X-Telegram-Bot-Api-Secret-Token");
@@ -38,113 +50,62 @@ export async function POST(req: NextRequest) {
       });
       console.dir(update, { depth: null, colors: true });
 
-      // $ лично только с создателем $
-      if (isBaseMessageSchema(update.message)) {
-        if (
-          update.message.chat.type === "private" &&
-          update.message.from.id !== 726008803
-        ) {
-          console.log({
-            status: "ignored",
-            message: "Attempt to privately communicate",
-            code: "ATTEMPT_PRIVATE",
-          });
-          const chatId = update.message.chat.id;
-          const name = update.message.chat.first_name;
-          afina.api.sendMessage(
-            chatId,
-            `Прости, ${name}, но лично могу общаться только с создателем💔`
-          );
-          return;
-        }
-      }
-
-      // $ добавлять в чат может только создатель $
-      if (isMyChatMemberUpdateSchema(update)) {
-        if (update.my_chat_member) {
-          const chat = update.my_chat_member.chat;
-          const from = update.my_chat_member.from;
-
-          if(from.id !== 726008803) {
-          console.log({
-            status: "info",
-            message: "Attempt to add to group chat",
-            code: "INVITE_IN_CHAT",
-            chatId: chat.id,
-            addedBy: from?.username || from?.id,
-          });
-
-          if (
-            chat.type === "group" ||
-            chat.type === "supergroup" ||
-            chat.type === "channel"
-          ) {
-            const newStatus = update.my_chat_member.new_chat_member.status;
-            if (newStatus === "member" || newStatus === "administrator") {
-              try {
-                // Отправляем сообщение в чат
-                await afina.api.sendMessage(
-                  chat.id,
-                  "Не хочу никого обидеть, но я ухожу отсюда 👀"
-                );
-
-                // Выходим из чата
-                await afina.api.leaveChat(chat.id);
-
-                console.log(`Bot left chat ${chat.id}`);
-              } catch (e) {
-                console.error(
-                  "Ошибка при отправке сообщения или выходе из чата",
-                  e
-                );
-              }
-            }
-          }
-          return true; // Обработали обновление
-        } }
-
-        // await afina.api.sendMessage(chatId, "Не хочу никого обидеть, но я ухожу отсюда 👀");
-        // await afina.api.leaveChat(chatId);
-        return;
-      }
+      // Только создатель (проверка по id пользователя)
+      // может добавлять бота в чат и вести с ним переписку лично
+      if (!(await afiOnlyCreator(update))) return;
 
       // $ работа с текстовым сообщением $
       if (isTextMessageSchema(update.message)) {
         console.log({
           status: "ok",
           message: "Message is text message",
-          code: "TEXTMESSAGE_UPDATE",
+          code: "TEXT_MESSAGE",
         });
 
-        // выполняем парс и загрузку сообщения в БД
-        const record = parseMessage(update.update_id, update.message, "text");
-        console.log({
-          message: "message parsed",
-          result: record,
-        });
+        const message = update.message;
+        const chatId = message.chat.id; // number
+        if (checkMention(message.text)) {
+          await afina.api.sendChatAction(chatId, "typing");
 
-        const recordResult = await saveMessageRDB(record);
+          /* тут в отдельной функции формируется ответ от LLM в два такта 
+          и отправлятеся пользователю */
+          await afina.api.sendMessage(chatId, "Таинственно проигнорирую 😏");
+        }
+
+        // парс и получаем массив
+        const parsedMessages = parseMessage(
+          update.update_id,
+          message,
+          [message.text],
+          "text",
+          false
+        );
+
+        // загружаем в RDB
+        const recordResult = await saveMessagesRDB(parsedMessages);
         console.log({
-          message: "massege uploaded in relational database",
+          message: "message uploaded in relational database",
           record: recordResult,
         });
 
-        const id = recordResult[0].id;
+        const { result, unsummarized: messagesBatch } = await isHundredBatch(
+          chatId
+        );
+        if (!result || messagesBatch === undefined) return;
 
-        // далее формируем embeddings
-        // далее обрабатываем нужен ли ответ от LLM
+        console.log("Enough messages to summarize, summarizing...");
+        const summaryText = await summaries(messagesBatch);
+        await updateStatusSummarized(messagesBatch);
+        await cleanRDB(chatId);
 
-        // завершаем выполнение серверной функции
-        return;
-      }
-
-      // $ работа с фотографией $
-      if (isPhotoMessageSchema(update.message)) {
+        const summaryPayload = parseSummary(messagesBatch, summaryText);
+        const summaryId = await saveSummaryRDB(summaryPayload);
+        const embeddings = await getEmbeddings([summaryText]);
         console.log({
           status: "ok",
-          message: "Message is photo message",
-          code: "PHOTOMESSAGE_UPDATE",
+          message: "Embeddings got",
         });
+        await uploadEmbeddings([{ id: summaryId, embedding: embeddings[0] }]);
 
         return;
       }
@@ -154,27 +115,82 @@ export async function POST(req: NextRequest) {
         console.log({
           status: "ok",
           message: "Message is voice message",
-          code: "VOICEMESSAGE_UPDATE",
+          code: "VOICE_MESSAGE",
         });
 
         const voice = update.message.voice;
         if (voice.file_size && voice.file_size <= 15 * 1024 * 1024) {
           try {
-            const result = await voiceToText(voice.file_id);
+            const text = await voiceToText(voice.file_id);
             console.log({
               status: "ok",
               message: "Voice to text is success",
-              result,
+              text,
             });
-            // берем текст и добавляем в БД
-            // потом обрабатываем нужне ли ответ LLM
+
+            if (typeof text === "undefined") {
+              console.log({
+                status: "error",
+                code: "UNDEFINED_RESULT",
+              });
+              throw new Error("VoiceToText result is undefined");
+            }
+
+            const chatId = update.message.chat.id;
+            const message = update.message;
+            if (checkMention(text)) {
+              await afina.api.sendChatAction(chatId, "typing");
+
+              /* тут в отдельной функции формируется ответ от LLM в два такта 
+              и отправлятеся пользователю */
+              await afina.api.sendMessage(
+                chatId,
+                "Таинственно проигнорирую 😏"
+              );
+            }
+
+            // парс и получаем массив
+            const parsedMessages = parseMessage(
+              update.update_id,
+              message,
+              [text],
+              "voice",
+              false
+            );
+
+            const recordResult = await saveMessagesRDB(parsedMessages);
+            console.log({
+              message: "message uploaded in relational database",
+              record: recordResult,
+            });
+
+            const { result, unsummarized: messagesBatch } =
+              await isHundredBatch(chatId);
+            if (!result || messagesBatch === undefined) return;
+
+            console.log("Enough messages to summarize, summarizing...");
+            const summaryText = await summaries(messagesBatch);
+            await updateStatusSummarized(messagesBatch);
+            await cleanRDB(chatId);
+
+            const summaryPayload = parseSummary(messagesBatch, summaryText);
+            const summaryId = await saveSummaryRDB(summaryPayload);
+            const embeddings = await getEmbeddings([summaryText]);
+            console.log({
+              status: "ok",
+              message: "Embeddings got",
+            });
+            await uploadEmbeddings([
+              { id: summaryId, embedding: embeddings[0] },
+            ]);
+
+            return;
           } catch (e) {
             console.error({
               status: "error",
               message: e,
               code: "VOICE_TO_TEXT_FAILED",
             });
-            // реагируем в тг-чате что ошибка
           }
         } else {
           console.error({
@@ -182,9 +198,7 @@ export async function POST(req: NextRequest) {
             message: "Voice file is too large",
             code: "FILE_TOO_LARGE",
           });
-          // если нужно реагируем пользователю в тг
         }
-
         return;
       }
 
@@ -193,8 +207,38 @@ export async function POST(req: NextRequest) {
         console.log({
           status: "ok",
           message: "Message is videonote message",
-          code: "VIDEONOTEMESSAGE_UPDATE",
+          code: "VIDEONOTE_MESSAGE",
         });
+
+        const chat = update.message.chat;
+        if (chat.type === "private") {
+          await afiUnsupportedType(chat.id);
+        }
+        return;
+      }
+
+      // $ работа с фотографией $
+      if (isPhotoMessageSchema(update.message)) {
+        console.log({
+          status: "ok",
+          message: "Message is photo message",
+          code: "PHOTO_MESSAGE",
+        });
+
+        const chat = update.message.chat;
+        const chatId = chat.id;
+        const caption = update.message.caption;
+        if (chat.type === "private") {
+          await afiUnsupportedType(chat.id);
+        }
+
+        if (checkMention(caption)) {
+          await afina.api.sendChatAction(chatId, "typing");
+
+          /* ответ LLM */
+          await afina.api.sendMessage(chatId, "Фото тупо секс, что еще сказать");
+        }
+
         return;
       }
 
