@@ -7,9 +7,14 @@ import {
 
 import {
   cleanRDB,
+  getLastSummary,
+  getRawMessages,
+  getUnsummarized,
   isHundredBatch,
   saveMessagesRDB,
   saveSummaryRDB,
+  summariesById,
+  supaClient,
   updateStatusSummarized,
 } from "@/app/lib/DataBases/RelationalDB";
 import { parseMessage, parseSummary } from "@/app/utils/Parse";
@@ -25,7 +30,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { chunkText } from "@/app/utils/ChunkText";
 import { getEmbeddings } from "@/app/lib/AI/GetEmbeddings";
 import { querySimilar, uploadEmbeddings } from "@/app/lib/DataBases/VectorVDB";
-import { summaries } from "@/app/lib/AI/LLM";
+import { composeFinalReply, summaries } from "@/app/lib/AI/LLM";
+import { decideReplyConfig } from "@/app/lib/AI/LLM";
+import { Sumana } from "next/font/google";
 
 export async function POST(req: NextRequest) {
   const headersSecret = req.headers.get("X-Telegram-Bot-Api-Secret-Token");
@@ -67,9 +74,65 @@ export async function POST(req: NextRequest) {
         if (checkMention(message.text)) {
           await afina.api.sendChatAction(chatId, "typing");
 
-          /* тут в отдельной функции формируется ответ от LLM в два такта 
-          и отправлятеся пользователю */
-          await afina.api.sendMessage(chatId, "Таинственно проигнорирую 😏");
+          let summariesTexts: string[] = [];
+
+          const config = await decideReplyConfig(message.text);
+
+          if (config.contextLevel === "immediate сontext") {
+            const extraSummariesTexts = await necesseryContext(chatId);
+            summariesTexts = [...summariesTexts, ...extraSummariesTexts];
+          }
+
+          if (config.contextLevel === "surface historical context") {
+            const extraSummariesTexts = await necesseryContext(chatId);
+            summariesTexts = [...summariesTexts, ...extraSummariesTexts];
+
+            const userEmbedding = await getEmbeddings([message.text]);
+            const similarEmbeddingsIds = await querySimilar(userEmbedding);
+            const similarSummaries = await summariesById(
+              similarEmbeddingsIds,
+              chatId
+            );
+
+            const similarSummariesTexts = similarSummaries.map(
+              (sS) => `${sS.date_from}-${sS.date_to}:${sS.text}`
+            );
+
+            summariesTexts = [...summariesTexts, ...similarSummariesTexts];
+          }
+
+          if (config.contextLevel === "detailed historical context") {
+            const extraSummariesTexts = await necesseryContext(chatId);
+            summariesTexts = [...summariesTexts, ...extraSummariesTexts];
+
+            const userEmbedding = await getEmbeddings([message.text]);
+            const similarEmbeddingsIds = await querySimilar(userEmbedding);
+            const similarSummaries = await summariesById(
+              similarEmbeddingsIds,
+              chatId
+            );
+
+            const similarSummariesTexts = similarSummaries.map(
+              (sS) => `${sS.date_from}-${sS.date_to}:${sS.text}`
+            );
+
+            summariesTexts = [...summariesTexts, ...similarSummariesTexts];
+          }
+
+          const rawMessages = await getRawMessages(chatId, 10);
+          const rawMessagesTexts = rawMessages.map(
+            (rM) => `${rM.firstName || rM.username || rM.userId}:${rM.text}`
+          );
+
+          const llmResponse = await composeFinalReply(message.text, {
+            systemPrompt: config.systemPrompt,
+            temperature: config.temperature,
+            max_tokens: config.max_tokens,
+            summariesTexts: summariesTexts,
+            rawMessages: rawMessagesTexts,
+          });
+          
+          await afina.api.sendMessage(chatId, llmResponse);
         }
 
         // парс и получаем массив
@@ -236,7 +299,10 @@ export async function POST(req: NextRequest) {
           await afina.api.sendChatAction(chatId, "typing");
 
           /* ответ LLM */
-          await afina.api.sendMessage(chatId, "Фото тупо секс, что еще сказать");
+          await afina.api.sendMessage(
+            chatId,
+            "Фото тупо секс, что еще сказать"
+          );
         }
 
         return;
@@ -261,4 +327,39 @@ export async function POST(req: NextRequest) {
   })();
 
   return NextResponse.json(null, { status: 200 });
+}
+
+async function necesseryContext(chatId: number): Promise<string[]> {
+  const unsummarized = await getUnsummarized(chatId);
+  let summariesTexts: string[] = [];
+  if (unsummarized.length < 50 && unsummarized.length !== 0) {
+    const lastSummary = await getLastSummary(chatId);
+    const fastSummary = await summaries(unsummarized);
+    summariesTexts = [
+      ...summariesTexts,
+      `${lastSummary.date_from}-${lastSummary.date_to}:${lastSummary.text}`,
+      `latest:${fastSummary}`,
+    ];
+  }
+
+  if (unsummarized.length > 50) {
+    const fastSummary = await summaries(unsummarized);
+    summariesTexts = [...summariesTexts, `latest:${fastSummary}`];
+  }
+
+  if (unsummarized.length === 0) {
+    const lastSummary = await getLastSummary(chatId);
+    summariesTexts = [
+      ...summariesTexts,
+      `${lastSummary.date_from}-${lastSummary.date_to}:${lastSummary.text}`,
+    ];
+  }
+
+  console.log({
+    status: "ok",
+    message: "the necessary context is formed",
+    summariesTexts
+  })
+
+  return summariesTexts;
 }

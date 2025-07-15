@@ -177,6 +177,24 @@ export const SummaryRecordSchema = z.object({
   message_count: z.number(),
 }); 
 
+export const SummarySchema = z.object({
+  id: z.string(),           // <-- ID в Supabase приходит как строка
+  chat_id: z.string(),
+  participants: z.string(),
+  text: z.string(),
+  date_from: z.string(),
+  date_to: z.string(),
+  created_at: z.string(),
+  message_count: z.number(),
+});
+
+export function isSummarySchema(
+  data: unknown
+): data is z.infer<typeof SummarySchema> {
+  return SummarySchema.safeParse(data).success;
+}
+
+
 export function isSummaryRecordSchema(
   data: unknown
 ): data is z.infer<typeof SummaryRecordSchema> {

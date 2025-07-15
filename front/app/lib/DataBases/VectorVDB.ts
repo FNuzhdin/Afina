@@ -48,7 +48,7 @@ export async function uploadEmbeddings(
 // выполнить семантический поиск
 export async function querySimilar(
   embeddings: number[][],
-  topK: number = 5
+  topK: number = 1
 ): Promise<string[]> {
   const allMatchesIds: string[] = [];
 
