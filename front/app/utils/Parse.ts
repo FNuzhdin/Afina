@@ -1,9 +1,9 @@
 import { z } from "zod/v4";
 import {
   BaseMessageSchema,
-  SummaryRecordSchema,
-  TextMessageRecordSchema,
-  TextMessageRecordSchemaArray,
+  SummaryToRecordSchema,
+  TextMessageToRecordSchema,
+  TextMessageReturnRecordSchema,
 } from "./Validation";
 
 export function parseMessage(
@@ -12,8 +12,8 @@ export function parseMessage(
   texts: string[],
   messageType: string,
   is_summarized: boolean
-): z.infer<typeof TextMessageRecordSchema>[] {
-  const parsedMessages: z.infer<typeof TextMessageRecordSchema>[] = [];
+): z.infer<typeof TextMessageToRecordSchema>[] {
+  const parsedMessages: z.infer<typeof TextMessageToRecordSchema>[] = [];
 
   for (const text of texts) {
     const parsed = {
@@ -30,11 +30,7 @@ export function parseMessage(
       is_summarized,
     };
 
-    console.log({
-      message: "message parsed",
-      type: messageType,
-      result: parsed,
-    });
+    console.log("☑️ Parse: message parsed");
 
     parsedMessages.push(parsed);
   }
@@ -43,9 +39,9 @@ export function parseMessage(
 }
 
 export function parseSummary(
-  summarized: z.infer<typeof TextMessageRecordSchemaArray>,
+  summarized: z.infer<typeof TextMessageReturnRecordSchema>[],
   summaryText: string
-): z.infer<typeof SummaryRecordSchema> {
+): z.infer<typeof SummaryToRecordSchema> {
   const participantsSet = new Set<string>();
 
   for (const msg of summarized) {
@@ -61,7 +57,7 @@ export function parseSummary(
   const participants = Array.from(participantsSet).join(", ");
 
   const summaryPayload = {
-    chat_id: summarized[0].chatId,
+    chat_id: String(summarized[0].chatId),
     participants,
     text: summaryText,
     date_from: summarized[0].date,
@@ -70,11 +66,7 @@ export function parseSummary(
     message_count: summarized.length,
   };
 
-  console.log({
-    status: "ok",
-    message: "Summary parsed",
-    result: summaryPayload,
-  });
-
+  console.log("☑️ Summary parsed: success");
+ 
   return summaryPayload;
 }

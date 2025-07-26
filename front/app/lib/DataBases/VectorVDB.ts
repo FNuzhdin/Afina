@@ -37,10 +37,7 @@ export async function uploadEmbeddings(
     }))
   );
 
-  console.log({
-    status: "ok",
-    message: "Upload to VDB is success"
-  });
+  console.log("☑️ Upload to VDB: success");
 
   return { success: true, upsertedCount: embeddings.length };
 }
@@ -65,6 +62,8 @@ export async function querySimilar(
 
     allMatchesIds.push(...matches);
   }
+
+  console.log("☑️ Query similar embeddings: success");
 
   return allMatchesIds;
 }

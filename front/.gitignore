@@ -43,3 +43,7 @@ Involve.txt
 next-env.d.ts
 
 /app/generated/prisma
+
+
+# users data
+/data

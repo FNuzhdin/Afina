@@ -9,6 +9,6 @@ export function chunkText(text: string, maxTokens = 500): string[] {
     chunks.push(words.slice(i, i + maxWords).join(" "));
   }
 
-  console.log("Chunked text result:", chunks);
+  console.log("☑️ Chunked text result:", chunks);
   return chunks;
 }

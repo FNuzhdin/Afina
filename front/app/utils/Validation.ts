@@ -3,7 +3,7 @@ import { z } from "zod/v4";
 export const FromSchema = z.object({
   id: z.number(),
   is_bot: z.boolean(),
-  first_name: z.string(),
+  first_name: z.string().optional(),
   last_name: z.string().optional(),
   username: z.string().optional(),
   language_code: z.string().optional(),
@@ -44,6 +44,7 @@ export const BaseMessageSchema = z.object({
     from: FromSchema,
     chat: ChatSchema,
     date: z.number(),
+    text: z.string().optional()
   }).optional(),
 });
 
@@ -83,6 +84,31 @@ export const VideoNoteMesssageSchema = BaseMessageSchema.extend({
     file_unique_id: z.string(),
     file_size: z.number(),
   }),
+});
+
+const VideoThumbnailSchema = z.object({
+  file_id: z.string(),
+  file_unique_id: z.string(),
+  file_size: z.number().optional(),
+  width: z.number(),
+  height: z.number(),
+});
+
+const VideoSchema = z.object({
+  duration: z.number(),
+  width: z.number(),
+  height: z.number(),
+  mime_type: z.string(),
+  file_id: z.string(),
+  file_unique_id: z.string(),
+  file_size: z.number(),
+  thumbnail: VideoThumbnailSchema.optional(),
+  thumb: VideoThumbnailSchema.optional(),
+});
+
+export const VideoMessageSchema = BaseMessageSchema.extend({
+  video: VideoSchema,
+  caption: z.string().optional(),
 });
 
 export const MyChatMemberUpdateSchema = z.object({
@@ -151,7 +177,7 @@ export const AssemblyAiResponseErrorSchema = z.object({
 
 export const EmbeddingResponseSchema = z.array(z.array(z.number()));
 
-export const TextMessageRecordSchema = z.object({
+export const TextMessageToRecordSchema = z.object({
   updateId: z.string(),
   messageId: z.string(),
   chatId: z.string(),
@@ -165,9 +191,27 @@ export const TextMessageRecordSchema = z.object({
   is_summarized: z.boolean(),
 });
 
-export const TextMessageRecordSchemaArray = z.array(TextMessageRecordSchema);
+export const TextMessageToRecordSchemaArray = z.array(TextMessageToRecordSchema);
 
-export const SummaryRecordSchema = z.object({
+export const TextMessageReturnRecordSchema = z.object({
+  id: z.number(),
+  updateId: z.coerce.number(),
+  messageId: z.number(),
+  chatId: z.number(),
+  userId: z.number(),
+  username: z.string().nullable().optional(),
+  firstName: z.string().nullable().optional(),
+  lastName: z.string().nullable().optional(),
+  text: z.string(),
+  date: z.string(),
+  messageType: z.string(),
+  is_summarized: z.boolean(),
+}
+)
+
+export const TextMessageReturnRecordSchemaArray = z.array(TextMessageReturnRecordSchema);
+
+export const SummaryToRecordSchema = z.object({
   chat_id: z.string(),
   participants: z.string(),
   text: z.string(),
@@ -177,8 +221,8 @@ export const SummaryRecordSchema = z.object({
   message_count: z.number(),
 }); 
 
-export const SummarySchema = z.object({
-  id: z.string(),           // <-- ID в Supabase приходит как строка
+export const SummaryReturnSchema = z.object({
+  id: z.coerce.number(),        
   chat_id: z.string(),
   participants: z.string(),
   text: z.string(),
@@ -188,30 +232,32 @@ export const SummarySchema = z.object({
   message_count: z.number(),
 });
 
-export function isSummarySchema(
+export const SummaryReturnSchemaArray = z.array(SummaryReturnSchema);
+
+export function isSummaryReturnSchema(
   data: unknown
-): data is z.infer<typeof SummarySchema> {
-  return SummarySchema.safeParse(data).success;
+): data is z.infer<typeof SummaryReturnSchema> {
+  return SummaryReturnSchema.safeParse(data).success;
 }
 
 
-export function isSummaryRecordSchema(
+export function isSummaryToRecordSchema(
   data: unknown
-): data is z.infer<typeof SummaryRecordSchema> {
-  return SummaryRecordSchema.safeParse(data).success;
+): data is z.infer<typeof SummaryToRecordSchema> {
+  return SummaryToRecordSchema.safeParse(data).success;
 }
 
-export function isTextMessageRecordSchemaArray(
+export function isTextMessageToRecordSchemaArray(
   data: unknown
-): data is z.infer<typeof TextMessageRecordSchemaArray> {
-  return TextMessageRecordSchemaArray.safeParse(data).success;
+): data is z.infer<typeof TextMessageToRecordSchemaArray> {
+  return TextMessageToRecordSchemaArray.safeParse(data).success;
 }
 
 
-export function isTextMessageRecordSchema(
+export function isTextMessageToRecordSchema(
   data: unknown
-): data is z.infer<typeof TextMessageRecordSchema> {
-  return TextMessageRecordSchema.safeParse(data).success;
+): data is z.infer<typeof TextMessageToRecordSchema> {
+  return TextMessageToRecordSchema.safeParse(data).success;
 }
 
 export function isTelegramFileInfoSchema(
@@ -286,3 +332,29 @@ export function isMyChatMemberUpdateSchema(
 ): data is z.infer<typeof MyChatMemberUpdateSchema> {
   return MyChatMemberUpdateSchema.safeParse(data).success;
 }
+
+export function isTextMessageReturnRecordSchema(
+  data: unknown
+): data is z.infer<typeof TextMessageReturnRecordSchema> {
+  return TextMessageReturnRecordSchema.safeParse(data).success;
+}
+
+export function isTextMessageReturnRecordSchemaArray(
+  data: unknown
+): data is z.infer<typeof TextMessageReturnRecordSchemaArray> {
+  return TextMessageReturnRecordSchemaArray.safeParse(data).success;
+}
+
+export function isSummaryReturnSchemaArray(
+  data: unknown
+): data is z.infer<typeof SummaryReturnSchemaArray> {
+  return SummaryReturnSchemaArray.safeParse(data).success;
+}
+
+
+export function isVideoMessageSchema(
+  data: unknown
+): data is z.infer<typeof VideoMessageSchema> {
+  return VideoMessageSchema.safeParse(data).success;
+}
+
