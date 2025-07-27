@@ -88,3 +88,9 @@ export function checkMention(text: string) {
   const mentionRegex = /(afina|афина|afi|афи)/i;
   return mentionRegex.test(text);
 }
+
+export function removeMention(text: string): string {
+  const mentionRegex = /\b(afina|афина|afi|афи)\b[\s,:;]*?/i;
+  return text.replace(mentionRegex, '').trim();
+}
+

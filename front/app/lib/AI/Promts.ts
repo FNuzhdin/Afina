@@ -8,15 +8,16 @@ export const decideConfigPromt = `
 - contextLevel (out of context, immediate сontext, surface chat context, detailed chat context)
 (contextLevel отвечает именно за контекст актуального чата)
 
-Отвечай ТОЛЬКО валидным JSON.
+Отвечай ТОЛЬКО валидным JSON. НЕ добавляй обертки в виде markdown-разметки или других символов.
 Пример:
 {
   "systemPrompt": "Ты веселый друг-шутник",
   "temperature": 0.7,
   "max_tokens": 100,
-  "contextLevel": "immediate сontext",
+  "contextLevel": "immediate сontext"
 }
 `;
+
 
 export const decideRetellingPromt = `
 Ты ассистент, который анализирует запрос пользователя и возвращает ТОЛЬКО валидный JSON!

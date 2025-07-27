@@ -28,6 +28,7 @@ import {
   afiOnlyCreator,
   afiUnsupportedType,
   checkMention,
+  removeMention,
 } from "@/app/lib/Bot";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -528,7 +529,8 @@ async function afinaResponse(
 
       await afina.api.sendChatAction(chatId, "typing");
 
-      const userEmbedding = await getEmbeddings([nameAndText]);
+      const withOutMention = removeMention(nameAndText);
+      const userEmbedding = await getEmbeddings([withOutMention]);
       const similarEmbeddingsIds = await querySimilar(userEmbedding);
       const similarSummaries = await summariesById(
         similarEmbeddingsIds,
@@ -548,7 +550,8 @@ async function afinaResponse(
 
       await afina.api.sendChatAction(chatId, "typing");
 
-      const userEmbedding = await getEmbeddings([nameAndText]); // ok
+      const withOutMention = removeMention(nameAndText);
+      const userEmbedding = await getEmbeddings([withOutMention]); // ok
       const similarEmbeddingsIds = await querySimilar(userEmbedding); // ok
       const similarSummaries = await summariesById(
         similarEmbeddingsIds,
