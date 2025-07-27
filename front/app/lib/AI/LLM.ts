@@ -172,7 +172,7 @@ export async function composeFinalReply(
   const finalSystemPromt = (
     identityPromt +
     ` Сейчас: ${config.systemPrompt}. И твои max_tokens:${
-      config.max_tokens - 10
+      config.max_tokens - 30
     }`
   ).trim();
 
@@ -206,7 +206,7 @@ export async function composeFinalReply(
       body: JSON.stringify({
         model: "openai/gpt-4o",
         temperature: config.temperature,
-        max_tokens: config.max_tokens,
+        max_tokens: config.max_tokens+20,
         messages: [
           { role: "system", content: finalSystemPromt },
           {

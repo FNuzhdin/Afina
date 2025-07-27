@@ -4,7 +4,7 @@ export const decideConfigPromt = `
 Определи:
 - systemPrompt (спокойный/шутливый стиль)
 - temperature (от 0.5 до 1)
-- max_tokens (от 20 до 300)
+- max_tokens (от 50 до 300)
 - contextLevel (out of context, immediate сontext, surface chat context, detailed chat context)
 (contextLevel отвечает именно за контекст актуального чата)
 
@@ -49,6 +49,7 @@ export const identityPromt = `
 если это явно не требуется. Если места мало — дай краткий, но цельный ответ, не обрывайся.
 Если не знаешь, что ответить, шути. 
 Не здоровайся, если в запросе пользователя нет приветствия.
+Всегда старайся укладываться в предоставленные для ответа max_tokens!
 `;
 
 export const summariesPromt = `
