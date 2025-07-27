@@ -58,7 +58,6 @@ async function main() {
   console.log(`Всего батчей по 100: ${batches.length}`);
 
   for (const [index, batch] of batches.entries()) {
-    // const batch = batches[0]
     console.log(`=== Обработка батча ${index + 1} ===`);
 
     if (!isBatchSchema(batch)) {

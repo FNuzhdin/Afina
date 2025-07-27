@@ -4,7 +4,10 @@ import {
   isVideoMessageSchema,
   isVideoNoteMesssageSchema,
   isVoiceMesssageSchema,
+  SummaryReturnSchema,
 } from "@/app/utils/Validation";
+
+import { z } from "zod/v4";
 
 import {
   cleanRDB,
@@ -144,7 +147,7 @@ export async function POST(req: NextRequest) {
             if (
               checkMention(text) ||
               message.chat.type === "private" ||
-              message.reply_to_message.from.username === "Afi_ai_bot"
+              message.reply_to_message?.from?.username === "Afi_ai_bot"
             ) {
               await afinaResponse(
                 chatId,
@@ -373,40 +376,15 @@ async function afinaResponse(
             .reverse()
             .slice(0, messagesCount - 1);
           console.log(trimmedUnsummarized.map((t) => t.text));
+
           const fastSummary = await summaries(trimmedUnsummarized);
-
-          try {
-            await afina.api.sendMessage(
-              userId,
-              `Последнее, о чем говорили. ${fastSummary}`
-            );
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
-
+          await afinaRetellingResponse(chatId, userId, messageId, fastSummary);
           return;
         }
 
         if (unsummarized.length === messagesCount - 1) {
           const fastSummary = await summaries(unsummarized);
-
-          try {
-            await afina.api.sendMessage(
-              userId,
-              `Последнее, о чем говорили. ${fastSummary}`
-            );
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
-
+          await afinaRetellingResponse(chatId, userId, messageId, fastSummary);
           return;
         }
 
@@ -414,17 +392,14 @@ async function afinaResponse(
           const lastSummary = await getLastSummary(chatId);
           const fastSummary = await summaries(unsummarized);
 
-          const response = `Дата и время по UTC: \n${lastSummary[0].date_from} \n${lastSummary[0].date_to} \n${lastSummary[0].text} \n \nПоследнее, о чем говорили. \n${fastSummary}`;
-
-          try {
-            await afina.api.sendMessage(userId, response);
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
+          await afinaRetellingResponse(
+            chatId,
+            userId,
+            messageId,
+            fastSummary,
+            lastSummary
+          );
+          return;
         }
       }
 
@@ -434,42 +409,24 @@ async function afinaResponse(
         if (difference <= 0) {
           const lastSummary = await getLastSummary(chatId);
 
-          try {
-            await afina.api.sendMessage(
-              userId,
-              `Дата и время по UTC: \n${lastSummary[0].date_from} \n${lastSummary[0].date_to} \n${lastSummary[0].text} \n \nПоследнее, о чем говорили. \n${fastSummary}`
-            );
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
-
+          await afinaRetellingResponse(
+            chatId,
+            userId,
+            messageId,
+            fastSummary,
+            lastSummary
+          );
           return;
         } else {
           const lastSummaries = await getLastSummary(chatId, 2);
-          const lastSummariesTexts = lastSummaries
-            .map((s) => ({
-              text: s.text,
-              date_from: s.date_from,
-              date_to: s.date_to,
-            }))
-            .reverse();
 
-          const response = `Дата и время по UTC: \n${lastSummariesTexts[0].date_from} \n${lastSummariesTexts[0].date_to} \n${lastSummariesTexts[0].text} \n \nДата и время по UTC: \n${lastSummariesTexts[1].date_from} \n${lastSummariesTexts[1].date_to} \n${lastSummariesTexts[1].text} \nПоследнее, о чем говорили. \n${fastSummary}
-        `;
-
-          try {
-            await afina.api.sendMessage(userId, response);
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
+          await afinaRetellingResponse(
+            chatId,
+            userId,
+            messageId,
+            fastSummary,
+            lastSummaries
+          );
 
           return;
         }
@@ -480,50 +437,26 @@ async function afinaResponse(
         const fastSummary = await summaries(unsummarized);
         if (difference <= 0) {
           const lastSummaries = await getLastSummary(chatId, 2);
-          const lastSummariesTexts = lastSummaries
-            .map((s) => ({
-              text: s.text,
-              date_from: s.date_from,
-              date_to: s.date_to,
-            }))
-            .reverse();
 
-          const response = `Дата и время по UTC: \n${lastSummariesTexts[0].date_from} \n${lastSummariesTexts[0].date_to} \n${lastSummariesTexts[0].text} \n \nДата и время по UTC: \n${lastSummariesTexts[1].date_from} \n${lastSummariesTexts[1].date_to} \n${lastSummariesTexts[1].text} \nПоследнее, о чем говорили. \n${fastSummary}
-        `;
-
-          try {
-            await afina.api.sendMessage(userId, response);
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
+          await afinaRetellingResponse(
+            chatId,
+            userId,
+            messageId,
+            fastSummary,
+            lastSummaries
+          );
 
           return;
         } else {
           const lastSummaries = await getLastSummary(chatId, 3);
-          const lastSummariesTexts = lastSummaries
-            .map((s) => ({
-              text: s.text,
-              date_from: s.date_from,
-              date_to: s.date_to,
-            }))
-            .reverse();
 
-          const response = `Дата и время по UTC: \n${lastSummariesTexts[0].date_from} \n${lastSummariesTexts[0].date_to} \n${lastSummariesTexts[0].text} \n \nДата и время по UTC: \n${lastSummariesTexts[1].date_from} \n${lastSummariesTexts[1].date_to} \n${lastSummariesTexts[1].text} \n \nДата и время по UTC: \n${lastSummariesTexts[2].date_from} \n${lastSummariesTexts[2].date_to} \n${lastSummariesTexts[2].text} \nПоследнее, о чем говорили. \n${fastSummary}
-        `;
-
-          try {
-            await afina.api.sendMessage(userId, response);
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
+          await afinaRetellingResponse(
+            chatId,
+            userId,
+            messageId,
+            fastSummary,
+            lastSummaries
+          );
 
           return;
         }
@@ -534,62 +467,42 @@ async function afinaResponse(
         const fastSummary = await summaries(unsummarized);
         if (difference <= 0) {
           const lastSummaries = await getLastSummary(chatId, 3);
-          const lastSummariesTexts = lastSummaries
-            .map((s) => ({
-              text: s.text,
-              date_from: s.date_from,
-              date_to: s.date_to,
-            }))
-            .reverse();
 
-          const response = `Дата и время по UTC: \n${lastSummariesTexts[0].date_from} \n${lastSummariesTexts[0].date_to} \n${lastSummariesTexts[0].text} \n \nДата и время по UTC: \n${lastSummariesTexts[1].date_from} \n${lastSummariesTexts[1].date_to} \n${lastSummariesTexts[1].text} \n \nДата и время по UTC: \n${lastSummariesTexts[2].date_from} \n${lastSummariesTexts[2].date_to} \n${lastSummariesTexts[2].text} \nПоследнее, о чем говорили. \n${fastSummary}
-        `;
-          try {
-            await afina.api.sendMessage(userId, response);
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
+          await afinaRetellingResponse(
+            chatId,
+            userId,
+            messageId,
+            fastSummary,
+            lastSummaries
+          );
 
           return;
         } else {
           const lastSummaries = await getLastSummary(chatId, 4);
-          const lastSummariesTexts = lastSummaries
-            .map((s) => ({
-              text: s.text,
-              date_from: s.date_from,
-              date_to: s.date_to,
-            }))
-            .reverse();
 
-          const response = `Дата и время по UTC: \n${lastSummariesTexts[0].date_from} \n${lastSummariesTexts[0].date_to} \n${lastSummariesTexts[0].text} \n \nДата и время по UTC: \n${lastSummariesTexts[1].date_from} \n${lastSummariesTexts[1].date_to} \n${lastSummariesTexts[1].text} \n \nДата и время по UTC: \n${lastSummariesTexts[2].date_from} \n${lastSummariesTexts[2].date_to} \n${lastSummariesTexts[2].text} \n \n Дата и время по UTC: \n${lastSummariesTexts[3].date_from} \n${lastSummariesTexts[3].date_to} \n${lastSummariesTexts[3].text} \nПоследнее, о чем говорили. \n${fastSummary}
-        `;
-          try {
-            await afina.api.sendMessage(userId, response);
-          } catch (e) {
-            await afina.api.sendMessage(
-              chatId,
-              "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
-              { reply_to_message_id: messageId }
-            );
-          }
+          await afinaRetellingResponse(
+            chatId,
+            userId,
+            messageId,
+            fastSummary,
+            lastSummaries
+          );
 
           return;
         }
       }
 
       if (messagesCount >= 401) {
-        await afina.api.sendMessage(chatId, "бляя, не... не хочу", { reply_to_message_id: messageId });
+        await afina.api.sendMessage(chatId, "не... не хочу, слишком много", {
+          reply_to_message_id: messageId,
+        });
       }
     } catch (e) {
       console.error("Reply error:", e);
 
       await afina.api.sendMessage(
         chatId,
-        "Произошла ошибочка при пересказе. Прости😭", 
+        "Произошла ошибочка при пересказе. Прости😭",
         { reply_to_message_id: messageId }
       );
     }
@@ -675,7 +588,9 @@ async function afinaResponse(
       },
     });
 
-    const afinaMessage = await afina.api.sendMessage(chatId, llmResponse, { reply_to_message_id: messageId });
+    const afinaMessage = await afina.api.sendMessage(chatId, llmResponse, {
+      reply_to_message_id: messageId,
+    });
 
     if (isTextMessageSchema(afinaMessage)) {
       const parsedAfinaMessage = parseMessage(
@@ -692,5 +607,51 @@ async function afinaResponse(
         record: recordResult,
       });
     }
+  }
+}
+
+async function afinaRetellingResponse(
+  chatId: number,
+  userId: number,
+  messageId: number,
+  fastSummary: string,
+  lastSummaries?: z.infer<typeof SummaryReturnSchema>[]
+) {
+  let lastSummariesString = "";
+  let response = "";
+
+  if (lastSummaries !== undefined && lastSummaries.length !== 0) {
+    const lastSummariesReverse = lastSummaries
+      .map((s) => ({
+        text: s.text,
+        date_from: s.date_from,
+        date_to: s.date_to,
+      }))
+      .reverse();
+
+    lastSummariesString = lastSummariesReverse
+      .map(
+        (lS) => `Дата и время по UTC для этого саммери: \nот ${lS.date_from}\nдо ${lS.date_to}\n${lS.text}\n`
+      )
+      .join("\n");
+
+    response = `Пересказ для тебя из чата ${chatId}\n${lastSummariesString}\nИ последнее о чем говорили:\n${fastSummary}`;
+  } else {
+    response = `Пересказ для тебя из чата ${chatId}\nПоследнее о чем говорили:\n${fastSummary}`;
+  }
+
+  try {
+    await afina.api.sendMessage(userId, response);
+    if (userId !== chatId) {
+      await afina.api.sendMessage(chatId, "Отправила в лс 😉", {
+        reply_to_message_id: messageId,
+      });
+    }
+  } catch (e) {
+    await afina.api.sendMessage(
+      chatId,
+      "Похоже я не могу пресказать тебе в лс. Вероятно, мы еще не общались лично. Напиши мне что-нибудь в лс и повтори запрос на пересказ в этом чате. Вот моя ссылочка: https://t.me/Afi_ai_bot",
+      { reply_to_message_id: messageId }
+    );
   }
 }
